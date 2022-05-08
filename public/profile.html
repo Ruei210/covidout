@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="./css/form.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile</title>
+</head>
+
+<body>
+    <h1>FILE</h1>
+    <p>id_number: <span id="id_number"></span><br />
+        date: <span id="date"></span><br />
+    </p>
+    <script>
+        const api = 'http://localhost:567/file';
+        async function getData() {
+            const response = await fetch(api);
+            const data = await response.json();
+            const { id_number, date, name, birth_date, sex, infect_covid, infect_date, treatment_place, oxygen_treatment, ICU_treatment, discharged_date, revisit, revisit_division, email, deal_with } = data;
+            document.getElementById('id_number').textContent = id_number;
+            document.getElementById('date').textContent = date;
+        }
+
+        getData();
+    </script>
+
+
+
+
+
+</body>
+
+</html>
