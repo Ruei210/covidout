@@ -5,7 +5,7 @@ const bodyParser = require("body-parser");
 const res = require("express/lib/response");
 const nodemailer = require('nodemailer');
 const session = require('express-session');
-const path = require('path');
+const fs = require('fs');
 const { json } = require('express/lib/response');
 
 
@@ -28,34 +28,32 @@ app.use(session({  //name: connect.sid 存放cookie的key
     saveUninitialized: false //如果設為false，session在還沒被修改前也不會被存入cookie。//true:使用者還沒登入，還沒把使用者資訊寫入session，就先存放了session在session store
 }));
 
-
+var myDB;
 //Mysql connection
-const myDB = mysql.createConnection({
-    host: 'bhzihwoot17f7jg9i8qx-mysql.services.clever-cloud.com',
-    port: 3306,
-    user: 'urur7xep1zh0rkuw',
-    password: 'XVLzfCo6h0WcxCv5x89K',
-    database: 'bhzihwoot17f7jg9i8qx',
+function handleError() {
+    myDB = mysql.createConnection({
+        host: 'covidextra.mysql.database.azure.com',
+        port: 3306,
+        user: 'fju',
+        password: 'Covid2022',
+        database: 'covidextra',
+        ssl: { ca: fs.readFileSync("/Users/annie/Downloads/DigiCertGlobalRootCA.crt.pem") }
 
-});
-myDB.connect(
-    function (err) {
-        if (err) {
-            console.log("!!! Cannot connect !!! Error:");
+    });
+    myDB.on('error', function (err) {
+        if (error.code === 'PROTOCOL_CONNECTION_LOST') {
+            handleError();
+        } else {
             throw err;
         }
-        else {
-            console.log("Connection established.");
-        }
-    });
-
+    })
+};
+handleError();
 
 //Middleware
-app.use(express.static('public'));
+//app.use(express.static('public'));
 app.use(express.json());
-/*app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/form.html')   //__dirname：目前的位置
-})*/
+
 
 app.post('/create', (req, res) => {
     console.log(req.body)   //server.js的xhr:'application/json'
@@ -96,21 +94,21 @@ app.post('/create', (req, res) => {
     var infect_covid = req.body.infect_covid;
     var infect_date = req.body.infect_date;
     var treatment_place = req.body.treatment_place;
-    var oxygen_treatment = req.body.oxygen_treatment;
-    var ICU_treatment = req.body.ICU_treatment;
+    var oxygen_treatment = req.body.oxygen_treatment ? req.body.oxygen_treatment : null;;
+    var ICU_treatment = req.body.ICU_treatment ? req.body.ICU_treatment : null;
     var discharged_date = req.body.discharged_date;
-    var revisit = req.body.revisit;
-    var revisit_division = req.body.revisit_division;
-    var deal_with = req.body.deal_with;
+    var revisit = req.body.revisit ? req.body.revisit : null;
+    var revisit_division = req.body.revisit_division ? req.body.revisit_division : null;
     var email = req.body.email;
 
+
+
     var db1 = `INSERT INTO patient(id_number,date,name,birth_date,sex, infect_covid, infect_date, treatment_place, oxygen_treatment, ICU_treatment, 
-        discharged_date, revisit, revisit_division, email, deal_with) 
-        VALUES ('${id_number}','${date}','${name}','${birth_date}','${sex}','${infect_covid}','${infect_date}','${treatment_place}','${oxygen_treatment}','${ICU_treatment}','${discharged_date}','${revisit}','${revisit_division}','${email}','${deal_with}')`;
+        discharged_date, revisit, revisit_division, email) VALUES ('${id_number}','${date}','${name}','${birth_date}',${sex},${infect_covid},'${infect_date}',${treatment_place},${oxygen_treatment}, ${ICU_treatment},'${discharged_date}',${revisit},${revisit_division},'${email}')`;
     myDB.query(db1, function (err, res) {
         if (err) throw err;
         console.log("Insert success1")
-        return res.end();
+
     })
 
 
@@ -119,10 +117,8 @@ app.post('/create', (req, res) => {
     myDB.query(db2, function (err, res) {
         if (err) throw err;
         console.log("Insert success")
-        return res.end();
+
     })
-
-
 
     transporter.sendMail(mailOptions, (error, info) => {
         if (error) {
@@ -130,17 +126,16 @@ app.post('/create', (req, res) => {
             return res.send('error');
         } else {
             console.log('Email sent:' + info.response);
-            return res.send('success')
+            return res.json({ "createState": true });
         }
     })
-})
+});
 //////////////////////
 //病患login
 app.post('/login', function (req, res) {
     // Capture the input fields
-    let email = req.body.username;
+    let email = req.body.email;
     let serial_number = req.body.password;
-    console.log(req.body);
     // Ensure the input fields exists and are not empty
     if (email && serial_number) {
         // Execute SQL query that'll select the account from the database based on the specified username and password
@@ -153,81 +148,58 @@ app.post('/login', function (req, res) {
                 req.session.loggedin = true;
                 req.session.email = email;
                 console.log(req.session);
-                console.log(results);
-                console.log("Login SUCCESS");
-                /*if (req.session.loggedin) {
+                if (req.session.loggedin) {
                     let email = req.session.email;
-                    myDB.query(`SELECT id_number, date, name, birth_date, sex, infect_covid, infect_date, treatment_place, oxygen_treatment, ICU_treatment, discharged_date, revisit, revisit_division, email, deal_with FROM patient WHERE email = ?`, [email], function (error, results) {
+                    myDB.query(`SELECT id_number, date, name, birth_date, sex, infect_covid, infect_date, treatment_place, oxygen_treatment, ICU_treatment, discharged_date, revisit, revisit_division, email FROM patient WHERE email = ?`, [email], function (error, results) {
                         if (error) throw error;
-                        console.log(results);
-                        let resultJson = JSON.stringify(results);
-                        let dataJson = JSON.parse(resultJson);
-                        console.log(dataJson);
+                        let dataJson = JSON.parse(JSON.stringify(results));
+                        dataJson[0]["loggedin"] = true;
                         return res.status(200).json(dataJson);
                     });
-                }*/
-
-                // Redirect to 病患檔案網頁
-                return res.redirect('/file');
+                }
             } else {
-                console.log("Login FAIL");
                 return res.send('Login fail')
             }
         });
     } else {
-        console.log('請登入');
         return res.send('請登入');
     }
 });
-
-app.get('/file', function (req, res) {
-    if (req.session.loggedin) {
-        let email = req.session.email;
-        myDB.query(`SELECT id_number, date, name, birth_date, sex, infect_covid, infect_date, treatment_place, oxygen_treatment, ICU_treatment, discharged_date, revisit, revisit_division, email, deal_with FROM patient WHERE email = ?`, [email], function (error, results) {
-            if (error) throw error;
-            console.log(results);
-            let resultJson = JSON.stringify(results);
-            let dataJson = JSON.parse(resultJson);
-            console.log(dataJson);
-            return res.status(200).json(dataJson);
-        })
-
-    }
-});
-
 
 //Logout
 app.get('/logout', function (req, res) {
     req.session.destroy(function (err) {
         if (err) {
             console.log(err);
-            return res.send("登出失敗");
+            return res.status(404).send("登出失敗");
         } else {
             console.log('session destory');
-            return res.send("已登出");
+            return res.json({ "logoutSucced": true });
         }
     });
 
 })
 //病患更改資料
-app.patch('/update', function (request, res) {
-    var name = request.body.name
-    var date = request.body.date
-    var infect_covid = request.body.infect_covid;
-    var infect_date = request.body.infect_date;
-    var treatment_place = request.body.treatment_place;
-    var oxygen_treatment = request.body.oxygen_treatment;
-    var ICU_treatment = request.body.ICU_treatment;
-    var discharged_date = request.body.discharged_date;
-    var revisit = request.body.revisit;
-    var revisit_division = request.body.revisit_division;
-    var deal_with = request.body.deal_with;
-    var email = request.session.email;
+app.post('/update', function (req, res) {
+    var birth_date = req.body.birth_date
+    var sex = req.body.sex
+    var name = req.body.name
+    var date = req.body.date
+    var infect_covid = req.body.infect_covid;
+    var infect_date = req.body.infect_date;
+    var treatment_place = req.body.treatment_place;
+    var oxygen_treatment = req.body.oxygen_treatment ? req.body.oxygen_treatment : null;;
+    var ICU_treatment = req.body.ICU_treatment ? req.body.ICU_treatment : null;
+    var discharged_date = req.body.discharged_date;
+    var revisit = req.body.revisit ? req.body.revisit : null;
+    var revisit_division = req.body.revisit_division ? req.body.revisit_division : null;
+    var id_number = req.body.id_number;
 
-    var db = `UPDATE patient SET date = '${date}' , name = '${name}',infect_covid='${infect_covid}',
-        infect_date='${infect_date}',treatment_place='${treatment_place}',oxygen_treatment='${oxygen_treatment}',
-        ICU_treatment='${ICU_treatment}',discharged_date='${discharged_date}',revisit='${revisit}',revisit_division='${revisit_division}',
-        deal_with='${deal_with}' WHERE email ='${email}' `;
+
+    var db = `UPDATE patient SET birth_date = '${birth_date}',sex = ${sex},date = '${date}' , name = '${name}',infect_covid=${infect_covid},
+        infect_date='${infect_date}',treatment_place=${treatment_place},oxygen_treatment=${oxygen_treatment},
+        ICU_treatment=${ICU_treatment},discharged_date='${discharged_date}',revisit=${revisit},revisit_division=${revisit_division}
+        WHERE id_number ='${id_number}' `;
     myDB.query(db, function (error, results) {
         if (error) {
             // Update fail
@@ -235,71 +207,10 @@ app.patch('/update', function (request, res) {
             return res.send("Update fail");
         } else {
             console.log("Update success");
-            console.log(results);
-            return res.send("Update success");
+            return res.json({ "updateSucced": true });
         }
-
     })
-
-
 });
-
-
-
-
-/*app.get('/patient', function (request, response) {
-    //response.sendFile(__dirname + "/public/contectForm.html") 
-    // If the user is loggedin
-    if (request.session.loggedin) {
-        var email = request.session.email
-        let myQuery = `select 
-        birth_date,sex,name,date,id_number,infect_covid,infect_date,
-        treatment_place,oxygen_treatment,ICU_treatment,discharged_date,
-        revisit,revisit_division,deal_with 
-        from patient where email = '${email}'`;
-        myDB.query(myQuery, (error, results) => {
-            if (error) {
-                return response.status(404).json(error);
-            }
-            return response.status(200).json(results);
-        });
-    } else {
-        // Not logged in
-        response.send('Please login to view this page!');
-    }
-    response.end();
-});
-//病患更改資料
-app.patch('/update', function (request, res) {
-    var name = request.body.name
-    var date = request.body.date
-    var infect_covid = request.body.infect_covid;
-    var infect_date = request.body.infect_date;
-    var treatment_place = request.body.treatment_place;
-    var oxygen_treatment = request.body.oxygen_treatment;
-    var ICU_treatment = request.body.ICU_treatment;
-    var discharged_date = request.body.discharged_date;
-    var revisit = request.body.revisit;
-    var revisit_dicision = request.body.revisit_dicision;
-    var deal_with = request.body.deal_with;
-
-
-    if (request.session.loggedin) {
-        var db = `update  patient set date = '${date}' , name = '${name}',infect_covid='${infect_covid}',
-        infect_date='${infect_date}',treatment_place='${treatment_place}',oxygen_treatment='${oxygen_treatment}',
-        ICU_treatment='${ICU_treatment}',discharged_date='${discharged_date}',revisit='${revisit}',revisit_division='${revisit_dicision}',
-        deal_with='${deal_with}' where email ='${email}' `;
-        myDB.query(db, function (err, res) {
-            if (err) throw err;
-            console.log("Update success")
-        })
-    } else {
-        // Not logged in
-        response.send('Please login to view this page!');
-    }
-    connection.release();
-});*/
-
 
 
 
